@@ -1,8 +1,6 @@
 function depth_example()
     % Make Pipeline object to manage streaming
     pipe = realsense.pipeline();
-    % Make Colorizer object to prettify depth output
-    %colorizer = realsense.colorizer();
 
     % Start streaming on an arbitrary camera with default settings
     profile = pipe.start();
@@ -11,29 +9,27 @@ function depth_example()
     dev = profile.get_device();
     name = dev.get_info(realsense.camera_info.name);
 
-    % Get frames. We discard the first couple to allow
-    % the camera time to settle
+    % Get frames.
     while true
-        %for i = 1:5
         fs = pipe.wait_for_frames();
-        %end
-    
-    % Stop streaming
-    % pipe.stop();
 
-    % Select depth frame
+        % Select depth frame
         depth = fs.get_depth_frame();
-        
+        % Select color frame
         color = fs.get_color_frame();
         colordata=color.get_data();
         img = permute(reshape(colordata',[3,color.get_width(),color.get_height()]),[3 2 1]);
         
-    % Get actual data and convert into a format imshow can use
-    % (Color data arrives as [R, G, B, R, G, B, ...] vector)
+        % Get actual data and convert into a format imshow can use
+        % (Color data arrives as [R, G, B, R, G, B, ...] vector)
         data = depth.get_data();
         dIm = reshape(data,[640 480]);
+
+        % Fix orientation of the image
         dIm = imrotate(dIm,270);
         I2 = flipdim(dIm ,2);
+        
+        % Create mask to get a specific color of object
         I3 = img;
 
         % Define thresholds for channel 1 based on histogram settings
@@ -61,20 +57,21 @@ function depth_example()
         maskedRGBImage(repmat(~BW,[1 1 3])) = 0;
         
         
-%         I3=rgb2hsv(img);
-%         img2 = I3 > 0.05 .* I3 < 0.2;
+        % Display results
         
+        % Display depth image
         subplot(2,1,1);imagesc(I2);axis equal;
         title('Depth image');
-        subplot(2,1,2);
-        imshow(BW);axis equal;
+        % Display color image
+        subplot(2,1,2);imagesc(img);axis equal;
+        % Detect circles and display detected circles, currently finds
+        % Orange circles only due to mask
         [centers,radii] = imfindcircles(I3,[20 60],'ObjectPolarity', 'bright', 'Sensitivity', 0.8)
         h = viscircles(centers,radii);
         title('Color image');
+        % Refreshes the imagescs
         drawnow;
-    % Display image
-%         imshow(img);
-%         title(sprintf("Colorized depth frame from %s", name));
+
     end
     pipe.stop();
 end
