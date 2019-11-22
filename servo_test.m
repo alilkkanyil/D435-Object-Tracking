@@ -112,64 +112,52 @@ dxl_error = 0;                                  % Dynamixel error
 dxl_led_value = [0 255];                        % Dynamixel LED value for write
 
 % Open port
-% if (openPort(port_num))
-%     fprintf('Succeeded to open port %d!\n',port_num);
-% else
-%     unloadlibrary(lib_name);
-%     fprintf('Failed to open the port!\n');
-%     input('Press any key to terminate...\n');
-%     return;
-% end
+if (openPort(port_num))
+    fprintf('Succeeded to open port %d!\n',port_num);
+else
+    unloadlibrary(lib_name);
+    fprintf('Failed to open the port!\n');
+    input('Press any key to terminate...\n');
+    return;
+end
 
 
 % Set port baudrate
-% if (setBaudRate(port_num, BAUDRATE))
-%     fprintf('Succeeded to change the baudrate!\n');
-% else
-%     unloadlibrary(lib_name);
-%     fprintf('Failed to change the baudrate!\n');
-%     input('Press any key to terminate...\n');
-%     return;
-% end
+if (setBaudRate(port_num, BAUDRATE))
+    fprintf('Succeeded to change the baudrate!\n');
+else
+    unloadlibrary(lib_name);
+    fprintf('Failed to change the baudrate!\n');
+    input('Press any key to terminate...\n');
+    return;
+end
 
 % Enable all servos
-% for i = [1 2 3 4 5 6]
-%     EnableTorque(DXL_IDS(i), port_num, PROTOCOL_VERSION);
-% end
-
-home = [180 180 180 180 180 180];
-%SetPose(port_num, PROTOCOL_VERSION, home);
-
-% Import model for robot arm
-robot = importrobot("C:\Users\smith\Documents\MATLAB\interbotix_descriptions\urdf\rx150.urdf");
-
-pose = [180 270 180 180 180 180];
-
-subplot(1,3,1);show(robot);
-
-finalConfiguration = SetConfiguration(robot, pose);
-
-soln = IKSolver(robot, finalConfiguration, end_effector, base_link);
-
-endpose =  ConfigSoln2Pose(soln);
-
-disp(endpose)
-%SetPose(port_num, PROTOCOL_VERSION, endpose);
+for i = [1 2 3]
+    EnableTorque(DXL_IDS(i), port_num, PROTOCOL_VERSION);
+end
 
 while 1
     if input('Press any key to continue! (or input e to quit!)\n', 's') == ESC_CHARACTER
         break;
     end
+    
+    id = input('Enter servo #:');
+    
+    if (id >= 0 && id<= 2)
+        pos = input('Goal position:');
+        write4ByteTxRx(port_num, PROTOCOL_VERSION, id, ADDR_GOAL_POSITION, uint16(pos));
+    end
 end
 
-% for i = [1 2 3 4 5 6]
-%     % Disable Dynamixel Torque
-%     DisableTorque(DXL_IDS(i), port_num, PROTOCOL_VERSION);
-% end
+for i = [1 2 3]
+    % Disable Dynamixel Torque
+    DisableTorque(DXL_IDS(i), port_num, PROTOCOL_VERSION);
+end
 
 % Close port
-% closePort(port_num);
-% disp("Closed port")
+closePort(port_num);
+disp("Closed port")
 
 % Unload Library
 unloadlibrary(lib_name);
@@ -209,112 +197,3 @@ function b = DisableTorque(id, port, protocol)
     b = dxl_comm_result & dxl_error;
 end
 
-function r = GetGoalPosition(id, port, protocol)
-    % Read present position
-    dxl_present_position = read4ByteTxRx(port, protocol, id, 132);
-    if getLastTxRxResult(port, protocol) ~= 0
-        printTxRxResult(protocol, getLastTxRxResult(port, protocol));
-    elseif getLastRxPacketError(port, protocol) ~= 0
-        printRxPacketError(protocol, getLastRxPacketError(port, protocol));
-    end
-
-    r = dxl_present_position;
-end
-
-function SetGoalPosition(id, port, protocol, goal)
-    % Set position
-    if  (0 < goal) && (goal < 4095)
-        write4ByteTxRx(port, protocol, id, 116, uint16(goal));
-        dxl_present_position = read4ByteTxRx(port, protocol, id, 132);
-        if getLastTxRxResult(port, protocol) ~= 0
-            printTxRxResult(protocol, getLastTxRxResult(port, protocol));
-        elseif getLastRxPacketError(port, protocol) ~= 0
-            %printRxPacketError(protocol, getLastRxPacketError(port, protocol));
-        end
-    end
-end
-
-function SetPose(port, protocol, pose)
-    len = length(pose);
-    goalpos = Deg2GoalPos(pose);
-    disp(goalpos)
-    for i = len:-1:1
-        SetGoalPosition(i-1, port, protocol, goalpos(i));
-    end
-end
-
-function out = GetPose(port, protocol)    
-    out(1) = GetGoalPosition(0, port, protocol);
-    out(2) = GetGoalPosition(1, port, protocol);
-    out(3) = GetGoalPosition(2, port, protocol);
-    out(4) = GetGoalPosition(3, port, protocol);
-    out(5) = GetGoalPosition(4, port, protocol);
-    out(6) = GetGoalPosition(5, port, protocol);
-end
-
-function c = SetConfiguration(model, arr)
-    config = model.homeConfiguration;
-    
-    for i = [1 2 3 4 5 6]
-        theta = GoalPos2Rad(180 - arr(i));
-        %theta = deg2rad(180 - arr(i));
-        disp(theta);
-        config(i).JointPosition = theta;
-    end
-    
-    c = config;
-end
-
-function soln = IKSolver(model, config, end_effector, start_link)
-    transform = getTransform(model,config,end_effector,start_link);
-    %transform(1,4) = 0.15;
-    %transform = [1 0 0 0.15; 0 -1 0 0; 0 0 -1 0.25; 0 0 0 1];
-    %transform(2,4) = 0;
-    %transform(3,4) = 0.25;
-    %disp(transform);
-    weights = [0.25 0.25 0.25 1 1 1];
-    initialguess = model.homeConfiguration;
-
-    ik = inverseKinematics;
-    ik.RigidBodyTree = model;
-
-    [configSoln,solnInfo] = ik(end_effector,transform,weights,initialguess);
-    show(model,configSoln);
-    soln = configSoln;
-end
-
-function x = ConfigSoln2Pose(config)
-    x = zeros(1,6);
-    x(1) = rad2deg(config(1).JointPosition);
-    x(2) = rad2deg(config(2).JointPosition);
-    x(3) = rad2deg(config(3).JointPosition);
-    x(4) = rad2deg(config(4).JointPosition);
-    x(5) = rad2deg(config(5).JointPosition);
-    x(6) = rad2deg(config(6).JointPosition);
-end
-
-function pos = Deg2GoalPos(deg)
-    pos = deg * (4096/360);
-end
-
-function deg = GoalPos2Deg(pos)
-    deg = pos * (360/4096);
-end
-
-function rad = GoalPos2Rad(pos)
-    rad = deg2rad(pos * (360/4096));
-end
-
-function pos = Rad2GoalPos(rad)
-    pos = Deg2GoalPos(rad2deg(3.14159 + rad));
-end
-
-function angle = clamp(deg)
-    if deg > 270
-        angle = 360 - deg
-    elseif deg > 90 && deg <= 270
-        angle = 180 - deg
-    else
-        angle = deg
-    end
-end
