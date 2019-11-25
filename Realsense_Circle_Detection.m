@@ -1,4 +1,4 @@
-function depth_example()
+function Realsense_Circle_Detection()
     % Make Pipeline object to manage streaming
     pipe = realsense.pipeline();
 
