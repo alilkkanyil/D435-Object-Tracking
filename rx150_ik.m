@@ -49,6 +49,7 @@ if ~libisloaded(lib_name)
     [notfound, warnings] = loadlibrary(lib_name, 'dynamixel_sdk.h', 'addheader', 'port_handler.h', 'addheader', 'packet_handler.h', 'addheader', 'group_bulk_read.h', 'addheader', 'group_bulk_write.h');
 end
 
+global pi;
 global DXL_MINIMUM_POSITION_VALUE;
 global DXL_MAXIMUM_POSITION_VALUE;
 
@@ -92,6 +93,7 @@ COMM_SUCCESS                    = 0;            % Communication Success result v
 COMM_TX_FAIL                    = -1001;        % Communication Tx 
 COMM_PORT_BUSY                  = -1000;        % Communication port was busy
 
+pi = 3.1415926535897932384626433832795;
 end_effector = 'wrist_link';
 base_link = 'base_link';
 
@@ -137,30 +139,28 @@ dxl_led_value = [0 255];                        % Dynamixel LED value for write
 %     EnableTorque(DXL_IDS(i), port_num, PROTOCOL_VERSION);
 % end
 
+% Set the pose of the robotic arm to the default home position
 home = [180 180 180 180 180 180];
 %SetPose(port_num, PROTOCOL_VERSION, home);
 
 % Import model for robot arm
-robot = importrobot("C:\Users\smith\Documents\MATLAB\interbotix_descriptions\urdf\rx150.urdf");
-
-pose = [180 270 180 180 180 180];
+robot = importrobot("C:\Users\smith\Documents\GitHub\interbotix_ros_arms\interbotix_descriptions\urdf\rx150.urdf");
 
 subplot(1,3,1);show(robot);
 
+% Set the final target effector pose for the simulation
+pose = [180 270 180 180 180 180];
 finalConfiguration = SetConfiguration(robot, pose);
 
 soln = IKSolver(robot, finalConfiguration, end_effector, base_link);
 
+% Convert the inverse kinematic solution into a set of angles suitable for
+% the robotic arm
 endpose =  ConfigSoln2Pose(soln);
 
 disp(endpose)
+subplot(1,3,2);show(robot,soln);
 %SetPose(port_num, PROTOCOL_VERSION, endpose);
-
-while 1
-    if input('Press any key to continue! (or input e to quit!)\n', 's') == ESC_CHARACTER
-        break;
-    end
-end
 
 % for i = [1 2 3 4 5 6]
 %     % Disable Dynamixel Torque
@@ -177,6 +177,7 @@ unloadlibrary(lib_name);
 close all;
 clear all;
 
+% Enables torque on all servos
 function b = EnableTorque(id, port, protocol)
     write1ByteTxRx(port, protocol, id, 64, 1);
     
@@ -193,6 +194,7 @@ function b = EnableTorque(id, port, protocol)
     b = dxl_comm_result & dxl_error;
 end
 
+% Disables torque on all servos
 function b = DisableTorque(id, port, protocol)
     write1ByteTxRx(port, protocol, id, 64, 0);
     
@@ -209,6 +211,7 @@ function b = DisableTorque(id, port, protocol)
     b = dxl_comm_result & dxl_error;
 end
 
+% Gets the goal position (angle) of a servo in the robotic arm
 function r = GetGoalPosition(id, port, protocol)
     % Read present position
     dxl_present_position = read4ByteTxRx(port, protocol, id, 132);
@@ -221,6 +224,7 @@ function r = GetGoalPosition(id, port, protocol)
     r = dxl_present_position;
 end
 
+% Sets the goal position (angle) of a servo in the robotic arm
 function SetGoalPosition(id, port, protocol, goal)
     % Set position
     if  (0 < goal) && (goal < 4095)
@@ -234,6 +238,7 @@ function SetGoalPosition(id, port, protocol, goal)
     end
 end
 
+% Sets the pose (group of angles) of the robotic arm in reverse order
 function SetPose(port, protocol, pose)
     len = length(pose);
     goalpos = Deg2GoalPos(pose);
@@ -243,6 +248,7 @@ function SetPose(port, protocol, pose)
     end
 end
 
+% Gets the current set of positions (angles) from the robotic arm
 function out = GetPose(port, protocol)    
     out(1) = GetGoalPosition(0, port, protocol);
     out(2) = GetGoalPosition(1, port, protocol);
@@ -252,12 +258,13 @@ function out = GetPose(port, protocol)
     out(6) = GetGoalPosition(5, port, protocol);
 end
 
+% Creates a configuration of joints from the default home configuration
 function c = SetConfiguration(model, arr)
     config = model.homeConfiguration;
     
     for i = [1 2 3 4 5 6]
-        theta = GoalPos2Rad(180 - arr(i));
-        %theta = deg2rad(180 - arr(i));
+        %theta = GoalPos2Rad(180 - arr(i));
+        theta = deg2rad(180 - arr(i));
         disp(theta);
         config(i).JointPosition = theta;
     end
@@ -265,6 +272,8 @@ function c = SetConfiguration(model, arr)
     c = config;
 end
 
+% Iteratively solves the problem of which joint angles will produce a given
+% pose 
 function soln = IKSolver(model, config, end_effector, start_link)
     transform = getTransform(model,config,end_effector,start_link);
     %transform(1,4) = 0.15;
@@ -272,41 +281,54 @@ function soln = IKSolver(model, config, end_effector, start_link)
     %transform(2,4) = 0;
     %transform(3,4) = 0.25;
     %disp(transform);
-    weights = [0.25 0.25 0.25 1 1 1];
+    %weights = [0.25 0.25 0.25 1 1 1];
+    weights = [0.01 0.01 0.01 0.1 0.1 0.1];
     initialguess = model.homeConfiguration;
 
     ik = inverseKinematics;
     ik.RigidBodyTree = model;
-
+    disp(transform)
     [configSoln,solnInfo] = ik(end_effector,transform,weights,initialguess);
-    show(model,configSoln);
     soln = configSoln;
 end
 
+% Converts a solution from the simulation into joint positions (angles) in
+% the frame of the robotic arm
 function x = ConfigSoln2Pose(config)
     x = zeros(1,6);
-    x(1) = rad2deg(config(1).JointPosition);
-    x(2) = rad2deg(config(2).JointPosition);
-    x(3) = rad2deg(config(3).JointPosition);
-    x(4) = rad2deg(config(4).JointPosition);
-    x(5) = rad2deg(config(5).JointPosition);
-    x(6) = rad2deg(config(6).JointPosition);
+%     disp(config(1).JointPosition);
+%     disp(config(2).JointPosition);
+%     disp(config(3).JointPosition);
+%     disp(config(4).JointPosition);
+%     disp(config(5).JointPosition);
+%     disp(config(6).JointPosition);
+    
+    x(1) = rad2deg(pi - config(1).JointPosition);
+    x(2) = rad2deg(pi - config(2).JointPosition);
+    x(3) = rad2deg(pi - config(3).JointPosition);
+    x(4) = rad2deg(pi - config(4).JointPosition);
+    x(5) = rad2deg(pi - config(5).JointPosition);
+    x(6) = rad2deg(pi - config(6).JointPosition);
 end
 
+% Converts a given angle in degrees to a goal position
 function pos = Deg2GoalPos(deg)
     pos = deg * (4096/360);
 end
 
+% Converts a given goal position to an angle in degrees
 function deg = GoalPos2Deg(pos)
     deg = pos * (360/4096);
 end
 
+% Converts a given goal position to an angle in radians
 function rad = GoalPos2Rad(pos)
     rad = deg2rad(pos * (360/4096));
 end
 
+% Converts a given angle in radians to a goal position
 function pos = Rad2GoalPos(rad)
-    pos = Deg2GoalPos(rad2deg(3.14159 + rad));
+    pos = Deg2GoalPos(rad2deg(pi + rad));
 end
 
 function angle = clamp(deg)
