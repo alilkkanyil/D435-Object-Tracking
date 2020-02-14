@@ -4,9 +4,17 @@ function Realsense_Circle_Detection()
     % Make Pipeline object to manage streaming
     pipe = realsense.pipeline();
 
-    % Start streaming on an arbitrary camera with default settings
-    profile = pipe.start();
 
+    % Create configuration setting up frame size and rate   
+    config=realsense.config();
+    config.enable_stream(realsense.stream.depth, 1280, 720, realsense.format.z16, 15)
+    config.enable_stream(realsense.stream.infrared, 1280, 720, realsense.format.y8, 15)
+    config.enable_stream(realsense.stream.color, 1280, 720, realsense .format.rgb8, 15)
+    
+    % Start streaming on an arbitrary camera with default settings
+    % config.enable_device_from_file(filename);
+    profile = pipe.start(config);    
+    
     % Get streaming device's name
     dev = profile.get_device();
     name = dev.get_info(realsense.camera_info.name);
@@ -23,7 +31,7 @@ function Realsense_Circle_Detection()
         colordata=color.get_data();
         % Creates colorized frame
         img = permute(reshape(colordata',[3,color.get_width(),color.get_height()]),[3 2 1]);
-        
+        imshow(img)
         % Get actual data and convert into a format imshow can use
         % (Color data arrives as [R, G, B, R, G, B, ...] vector)
         data = depth.get_data();
